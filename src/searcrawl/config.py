@@ -1,54 +1,51 @@
 # -*- coding: utf-8 -*-
 """
-配置模块 - 负责从环境变量加载配置
+Configuration Module - Loads configuration from environment variables
 
 This module loads configuration from environment variables and provides
 default values when environment variables are not set.
 """
 
 import os
+from typing import Dict, Any
 from dotenv import load_dotenv
-import logging
+from loguru import logger
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# 加载.env文件中的环境变量
+# Load environment variables from .env file
 load_dotenv()
-logger.info("加载环境变量配置")
+logger.info("Loading environment variable configuration")
 
-# SearXNG 配置
+# SearXNG Configuration
 SEARXNG_HOST = os.getenv("SEARXNG_HOST", "localhost")
 SEARXNG_PORT = int(os.getenv("SEARXNG_PORT", "8080"))
 SEARXNG_BASE_PATH = os.getenv("SEARXNG_BASE_PATH", "/search")
 SEARXNG_API_BASE = f"http://{SEARXNG_HOST}:{SEARXNG_PORT}{SEARXNG_BASE_PATH}"
 
-# API 服务配置
+# API Service Configuration
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "3000"))
 
-# 爬虫配置
+# Crawler Configuration
 DEFAULT_SEARCH_LIMIT = int(os.getenv("DEFAULT_SEARCH_LIMIT", "10"))
 CONTENT_FILTER_THRESHOLD = float(os.getenv("CONTENT_FILTER_THRESHOLD", "0.6"))
 WORD_COUNT_THRESHOLD = int(os.getenv("WORD_COUNT_THRESHOLD", "10"))
 
-# 搜索引擎配置
+# Search Engine Configuration
 DISABLED_ENGINES = os.getenv(
     "DISABLED_ENGINES",
-    "wikipedia__general,currency__general,wikidata__general,duckduckgo__general,google__general,lingva__general,qwant__general,startpage__general,dictzone__general,mymemory translated__general,brave__general"
+    "wikipedia__general,currency__general,wikidata__general,duckduckgo__general,"
+    "google__general,lingva__general,qwant__general,startpage__general,"
+    "dictzone__general,mymemory translated__general,brave__general"
 )
 ENABLED_ENGINES = os.getenv("ENABLED_ENGINES", "baidu__general")
+SEARCH_LANGUAGE = os.getenv("SEARCH_LANGUAGE", "auto")
 
-# 导出配置信息函数
-def get_config_info():
-    """返回当前配置信息的字典
+
+def get_config_info() -> Dict[str, Any]:
+    """Returns a dictionary of current configuration information
 
     Returns:
-        dict: 包含所有配置参数的字典
+        dict: Dictionary containing all configuration parameters
     """
     return {
         "searxng": {

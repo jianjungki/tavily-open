@@ -1,156 +1,286 @@
 # SearCrawl
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-中文 | [English](README_EN.md)
+## Introduction
 
-## 简介
+SearCrawl is an open-source search and crawling tool based on SearXNG and Crawl4AI, serving as an open-source alternative to Tavily. It provides similar search and web content extraction capabilities while being fully open-source and customizable.
 
-SearCrawl 是一个基于 SearXNG 和 Crawl4AI 的开源搜索和爬取工具，可作为 Tavily 的开源替代品。它提供了类似的搜索和网页内容提取功能，但完全开源且可自定义配置。
+Key Features:
+- Search results retrieval through SearXNG search engine
+- Web content crawling and processing using Crawl4AI
+- Clean RESTful API interface
+- Customizable search engine and crawling parameters
+- Modern Python packaging with pyproject.toml
+- Comprehensive test suite
+- Code quality tools integration
 
-主要功能：
-- 通过 SearXNG 搜索引擎获取搜索结果
-- 使用 Crawl4AI 爬取和处理网页内容
-- 提供简洁的 RESTful API 接口
-- 支持自定义搜索引擎和爬取参数
+## Installation
 
-## 安装
-
-### 前提条件
+### Prerequisites
 
 - Python 3.8+
-- SearXNG 实例（本地或远程）
-- Playwright 浏览器（安装脚本会自动处理）
+- SearXNG instance (local or remote)
+- Playwright browser (installation script handles automatically)
 
-### 安装步骤
+### Installation Steps
 
-1. 克隆仓库
+1. Clone the repository
 ```bash
-git clone https://github.com/Bclound/searCrawl.git
-cd searCrawl
+git clone https://github.com/Owoui/SearXNG-Crawl4AI.git
+cd SearXNG-Crawl4AI
 ```
 
-2. 安装依赖
+2. Create and activate a virtual environment
 ```bash
-pip install -r requirements.txt
+# On Windows
+python -m venv venv
+venv\Scripts\activate
+
+# On macOS/Linux
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-3. 配置环境变量
+3. Install the package
+```bash
+# For production use
+pip install -e .
+
+# For development (includes testing and code quality tools)
+pip install -e ".[dev]"
+```
+
+4. Configure environment variables
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，根据需要修改配置
+# Edit .env file and modify configurations as needed
 ```
 
-## 使用方法
+## Usage
 
-### 启动服务
+### Start the Service
 
+Using the installed command:
 ```bash
-python main.py
+searcrawl
 ```
 
-服务默认运行在 `http://0.0.0.0:3000`
+Or directly with Python:
+```bash
+python -m searcrawl.main
+```
 
-### API 接口
+Service runs by default at `http://0.0.0.0:3000`
 
-#### 搜索接口
+### API Endpoints
+
+#### Search Endpoint
 
 ```
 POST /search
 ```
 
-请求体：
+Request body:
 ```json
 {
-  "query": "搜索关键词",
+  "query": "search keywords",
   "limit": 10,
   "disabled_engines": "wikipedia__general,currency__general,wikidata__general,duckduckgo__general,google__general,lingva__general,qwant__general,startpage__general,dictzone__general,mymemory translated__general,brave__general",
   "enabled_engines": "baidu__general"
 }
 ```
 
-参数说明：
-- `query`: 搜索查询字符串（必填）
-- `limit`: 返回结果数量限制，默认为10
-- `disabled_engines`: 禁用的搜索引擎列表，逗号分隔，您可以在searXNG的COOKIES中复制
-- `enabled_engines`: 启用的搜索引擎列表，逗号分隔，您可以在searXNG的COOKIES中复制
+Parameters:
+- `query`: Search query string (required)
+- `limit`: Maximum number of results to return, default is 10
+- `disabled_engines`: List of disabled search engines, comma-separated
+- `enabled_engines`: List of enabled search engines, comma-separated
 
-响应：
+Response:
 ```json
 {
-  "content": "爬取的网页内容...",
+  "content": "Crawled web content...",
   "success_count": 8,
   "failed_urls": ["https://example.com/failed1", "https://example.com/failed2"]
 }
 ```
 
-## 部署注意事项
+### API Documentation
 
-在部署SearXNG时，需要特别注意以下配置：
+Once the service is running, visit:
+- Swagger UI: `http://localhost:3000/docs`
+- ReDoc: `http://localhost:3000/redoc`
 
-1. 修改SearXNG的settings.yml配置文件：
-   - 在`search`部分添加或修改formats配置：
+## Deployment Notes
+
+When deploying SearXNG, pay special attention to the following configuration:
+
+1. Modify the SearXNG settings.yml configuration file:
+   - Add or modify formats configuration in the `search` section:
    ```yaml
    search:
      formats:
        - html
        - json
    ```
-   这个配置确保SearXNG能够返回JSON格式的搜索结果，这对于Sear-Crawl4AI插件的正常工作是必需的。
+   This configuration ensures SearXNG returns JSON format search results, which is necessary for SearCrawl to function properly.
 
-## 配置选项
+## Configuration Options
 
-可以通过 `.env` 文件配置以下参数：
+The following parameters can be configured through the `.env` file:
 
-```
-# SearXNG 配置
+```env
+# SearXNG Configuration
 SEARXNG_HOST=localhost
 SEARXNG_PORT=8080
 SEARXNG_BASE_PATH=/search
 
-# API 服务配置
+# API Service Configuration
 API_HOST=0.0.0.0
 API_PORT=3000
 
-# 爬虫配置
+# Crawler Configuration
 DEFAULT_SEARCH_LIMIT=10
 CONTENT_FILTER_THRESHOLD=0.6
 WORD_COUNT_THRESHOLD=10
 
-# 搜索引擎配置
+# Search Engine Configuration
 DISABLED_ENGINES=wikipedia__general,currency__general,...
 ENABLED_ENGINES=baidu__general
 ```
 
-## 开发
+## Development
 
-### 项目结构
+### Project Structure
 
 ```
 .
-├── .env.example        # 环境变量示例文件
-├── config.py           # 配置加载模块
-├── crawler.py          # 爬虫功能模块
-├── logger.py           # 日志记录模块
-├── main.py             # 主程序和API接口
-├── requirements.txt    # 依赖项列表
-└── README.md           # 项目说明文档
+├── src/
+│   └── searcrawl/
+│       ├── __init__.py      # Package initialization
+│       ├── config.py         # Configuration loading module
+│       ├── crawler.py        # Crawler functionality module
+│       ├── logger.py         # Logging module
+│       └── main.py           # Main program and API endpoints
+├── tests/
+│   ├── __init__.py
+│   ├── test_config.py
+│   ├── test_crawler.py
+│   └── test_api.py
+├── .env.example              # Environment variables example
+├── .gitignore                # Git ignore patterns
+├── .pre-commit-config.yaml   # Pre-commit hooks configuration
+├── pyproject.toml            # Project metadata and dependencies
+├── requirements.txt          # Production dependencies
+├── requirements-dev.txt      # Development dependencies
+├── LICENSE                   # MIT License
+└── README.md                 # Project documentation
 ```
 
-### 扩展功能
+### Development Setup
 
-如需扩展功能，可以修改以下文件：
+1. Install development dependencies:
+```bash
+pip install -e ".[dev]"
+```
 
-- `crawler.py`: 添加新的爬取策略或内容处理方法
-- `main.py`: 添加新的API端点
-- `config.py`: 添加新的配置参数
+2. Install pre-commit hooks:
+```bash
+pre-commit install
+```
 
-## 许可证
+3. Run tests:
+```bash
+pytest
+```
+
+4. Run tests with coverage:
+```bash
+pytest --cov=searcrawl --cov-report=html
+```
+
+5. Format code:
+```bash
+black src/ tests/
+```
+
+6. Lint code:
+```bash
+ruff check src/ tests/
+```
+
+7. Type checking:
+```bash
+mypy src/
+```
+
+### Code Quality Tools
+
+This project uses several tools to maintain code quality:
+
+- **Black**: Code formatting
+- **Ruff**: Fast Python linter
+- **MyPy**: Static type checking
+- **isort**: Import sorting
+- **pytest**: Testing framework
+- **pre-commit**: Git hooks for code quality
+
+### Extending Functionality
+
+To extend functionality, you can modify the following files:
+
+- `src/searcrawl/crawler.py`: Add new crawling strategies or content processing methods
+- `src/searcrawl/main.py`: Add new API endpoints
+- `src/searcrawl/config.py`: Add new configuration parameters
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_crawler.py
+
+# Run with coverage report
+pytest --cov=searcrawl --cov-report=term-missing
+
+# Run with verbose output
+pytest -v
+```
+
+### Building Distribution
+
+```bash
+# Build source and wheel distributions
+python -m build
+
+# The built distributions will be in the dist/ directory
+```
+
+## License
 
 [MIT](LICENSE)
 
-## 致谢
+## Acknowledgments
 
-- [SearXNG](https://github.com/searxng/searxng) - 隐私友好的元搜索引擎
-- [Crawl4AI](https://github.com/crawl4ai/crawl4ai) - 用于AI的网页爬取库
-- [FastAPI](https://fastapi.tiangolo.com/) - 现代、快速的Web框架
+- [SearXNG](https://github.com/searxng/searxng) - Privacy-respecting meta search engine
+- [Crawl4AI](https://github.com/unclecode/crawl4ai) - Web crawling library for AI
+- [FastAPI](https://fastapi.tiangolo.com/) - Modern, fast web framework
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+Make sure to:
+- Update tests as appropriate
+- Follow the code style (enforced by pre-commit hooks)
+- Update documentation as needed

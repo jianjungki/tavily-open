@@ -1,20 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-爬虫模块 - 提供网页爬取和内容处理功能
+Crawler Module - Provides web crawling and content processing functionality
 
 This module provides web crawling and content processing functionality.
 It encapsulates the AsyncWebCrawler from crawl4ai library and provides
 high-level methods for crawling web pages and processing their content.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
     CrawlerRunConfig,
     CacheMode,
-    CrawlerMonitor,
-    DisplayMode
 )
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter
@@ -25,116 +23,121 @@ import http.client
 from codecs import encode
 import json
 from fastapi import HTTPException
+from loguru import logger
 
-# 导入配置和日志模块
-from config import (
+# Import configuration
+from searcrawl.config import (
     SEARXNG_HOST,
     SEARXNG_PORT,
     SEARXNG_BASE_PATH,
     DISABLED_ENGINES,
     ENABLED_ENGINES,
+    SEARCH_LANGUAGE,
     CONTENT_FILTER_THRESHOLD,
     WORD_COUNT_THRESHOLD
 )
-import logger
 
 
 class WebCrawler:
-    """网页爬虫类，封装了网页爬取和内容处理的功能"""
+    """Web crawler class that encapsulates web crawling and content processing functionality"""
 
     def __init__(self):
-        """初始化爬虫实例"""
+        """Initialize crawler instance"""
         self.crawler = None
-        logger.info("初始化WebCrawler实例")
+        logger.info("Initializing WebCrawler instance")
 
     async def initialize(self) -> None:
-        """初始化AsyncWebCrawler实例
+        """Initialize AsyncWebCrawler instance
 
-        必须在使用爬虫前调用此方法
+        Must be called before using the crawler
         """
-        # 配置浏览器
+        # Configure browser
         browser_config = BrowserConfig(headless=True, verbose=True)
-        # 初始化爬虫
+        # Initialize crawler
         self.crawler = await AsyncWebCrawler(config=browser_config).__aenter__()
-        logger.info("AsyncWebCrawler初始化完成")
+        logger.info("AsyncWebCrawler initialization completed")
 
     async def close(self) -> None:
-        """关闭爬虫实例，释放资源"""
+        """Close crawler instance and release resources"""
         if self.crawler:
             await self.crawler.__aexit__(None, None, None)
-            logger.info("AsyncWebCrawler已关闭")
+            logger.info("AsyncWebCrawler closed")
 
     @staticmethod
     def markdown_to_text_regex(markdown_str: str) -> str:
-        """使用正则表达式将Markdown文本转换为纯文本
+        """Convert Markdown text to plain text using regular expressions
 
         Args:
-            markdown_str: Markdown格式的文本
+            markdown_str: Markdown formatted text
 
         Returns:
-            str: 转换后的纯文本
+            str: Converted plain text
         """
-        # 移除标题符号
+        # Remove heading symbols
         text = re.sub(r'#+\s*', '', markdown_str)
 
-        # 移除链接和图片
+        # Remove links and images
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
 
-        # 移除粗体、斜体等强调符号
+        # Remove bold, italic, and other emphasis markers
         text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
         text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
 
-        # 移除列表符号
+        # Remove list markers
         text = re.sub(r'^[\*\-\+]\s*', '', text, flags=re.MULTILINE)
 
-        # 移除代码块
+        # Remove code blocks
         text = re.sub(r'`{3}.*?`{3}', '', text, flags=re.DOTALL)
         text = re.sub(r'`(.*?)`', r'\1', text)
 
-        # 移除引用块
+        # Remove quote blocks
         text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
 
         return text.strip()
 
     @staticmethod
     def markdown_to_text(markdown_str: str) -> str:
-        """使用markdown和BeautifulSoup库将Markdown文本转换为纯文本
+        """Convert Markdown text to plain text using markdown and BeautifulSoup libraries
 
         Args:
-            markdown_str: Markdown格式的文本
+            markdown_str: Markdown formatted text
 
         Returns:
-            str: 转换后的纯文本
+            str: Converted plain text
         """
         html = markdown.markdown(markdown_str, extensions=['fenced_code'])
-        # 用 BeautifulSoup 提取纯文本
+        # Extract plain text using BeautifulSoup
         soup = BeautifulSoup(html, "html.parser")
 
-        text = soup.get_text(separator="\n")  # 保留段落换行
+        text = soup.get_text(separator="\n")  # Preserve paragraph line breaks
 
-        # 清理多余空行
-        cleaned_text = "\n".join([line.strip()
-                             for line in text.split("\n") if line.strip()])
+        # Clean up extra blank lines
+        cleaned_text = "\n".join([
+            line.strip() for line in text.split("\n") if line.strip()
+        ])
 
         return cleaned_text
 
     @staticmethod
-    def make_searxng_request(query: str, limit: int = 10,
-                           disabled_engines: str = DISABLED_ENGINES,
-                           enabled_engines: str = ENABLED_ENGINES) -> dict:
-        """向SearXNG发送搜索请求
+    def make_searxng_request(
+        query: str,
+        limit: int = 10,
+        disabled_engines: str = DISABLED_ENGINES,
+        enabled_engines: str = ENABLED_ENGINES
+    ) -> dict:
+        """Send search request to SearXNG
 
         Args:
-            query: 搜索查询字符串
-            limit: 返回结果数量限制
-            disabled_engines: 禁用的搜索引擎列表，逗号分隔
-            enabled_engines: 启用的搜索引擎列表，逗号分隔
+            query: Search query string
+            limit: Limit on number of results to return
+            disabled_engines: List of disabled search engines, comma-separated
+            enabled_engines: List of enabled search engines, comma-separated
 
         Returns:
-            dict: SearXNG返回的搜索结果
+            dict: Search results returned by SearXNG
 
         Raises:
-            Exception: 当请求失败时抛出异常
+            Exception: Raised when request fails
         """
         try:
             conn = http.client.HTTPConnection(SEARXNG_HOST, SEARXNG_PORT)
@@ -144,14 +147,14 @@ class WebCrawler:
             form_data = {
                 'q': query,
                 'format': 'json',
-                'language': 'zh',
+                'language': SEARCH_LANGUAGE,
                 'time_range': 'week',
                 'safesearch': '2',
                 'pageno': '1',
                 'category_general': '1'
             }
 
-            # 添加表单字段
+            # Add form fields
             for key, value in form_data.items():
                 dataList.append(encode('--' + boundary))
                 dataList.append(encode(f'Content-Disposition: form-data; name={key};'))
@@ -172,35 +175,35 @@ class WebCrawler:
                 'Content-Type': f'multipart/form-data; boundary={boundary}'
             }
 
-            logger.info(f"向SearXNG发送搜索请求: {query}")
+            logger.info(f"Sending search request to SearXNG: {query}")
             conn.request("POST", SEARXNG_BASE_PATH, body, headers)
             res = conn.getresponse()
             data = res.read()
-            return json.loads(data.decode("utf-8"))  # 解析 JSON 字符串为字典
+            return json.loads(data.decode("utf-8"))
         except Exception as e:
-            logger.error(f"SearXNG请求失败: {str(e)}")
-            raise Exception(f"搜索请求失败: {str(e)}")
+            logger.error(f"SearXNG request failed: {str(e)}")
+            raise Exception(f"Search request failed: {str(e)}")
 
     async def crawl_urls(self, urls: List[str], instruction: str) -> Dict[str, Any]:
-        """爬取多个URL并处理内容
+        """Crawl multiple URLs and process content
 
         Args:
-            urls: 要爬取的URL列表
-            instruction: 爬取指令，通常是搜索查询
+            urls: List of URLs to crawl
+            instruction: Crawling instruction, typically a search query
 
         Returns:
-            Dict[str, Any]: 包含处理后内容、成功数量和失败URL的字典
+            Dict[str, Any]: Dictionary containing processed content, success count, and failed URLs
 
         Raises:
-            HTTPException: 当所有URL爬取均失败时抛出异常
+            HTTPException: Raised when all URL crawls fail
         """
         try:
-            # 检查爬虫是否已初始化
+            # Check if crawler has been initialized
             if not self.crawler:
-                logger.warning("爬虫未初始化，正在自动初始化")
+                logger.warning("Crawler not initialized, auto-initializing")
                 await self.initialize()
 
-            # 配置Markdown生成器
+            # Configure Markdown generator
             md_generator = DefaultMarkdownGenerator(
                 content_filter=PruningContentFilter(threshold=CONTENT_FILTER_THRESHOLD),
                 options={
@@ -210,101 +213,101 @@ class WebCrawler:
                 }
             )
 
-            # 配置爬虫运行参数
+            # Configure crawler run parameters
             run_config = CrawlerRunConfig(
                 word_count_threshold=WORD_COUNT_THRESHOLD,
-                exclude_external_links=True,    # 移除外部链接
-                remove_overlay_elements=True,   # 移除弹窗/模态框
-                excluded_tags=['img', 'header', 'footer', 'iframe', 'nav'],      # 排除图片标签
-                process_iframes=True,           # 处理iframe
+                exclude_external_links=True,
+                remove_overlay_elements=True,
+                excluded_tags=['img', 'header', 'footer', 'iframe', 'nav'],
+                process_iframes=True,
                 markdown_generator=md_generator,
-                cache_mode=CacheMode.BYPASS     # 不使用缓存
+                cache_mode=CacheMode.BYPASS
             )
 
-            logger.info(f"开始爬取URLs: {', '.join(urls)}")
+            logger.info(f"Starting to crawl URLs: {', '.join(urls)}")
             results = await self.crawler.arun_many(urls=urls, config=run_config)
 
-            # 创建一个列表来存储所有成功URL的爬取结果
+            # Create a list to store crawl results from all successful URLs
             all_results = []
             failed_urls = []
             retry_urls = []
 
-            # 第一次爬取处理
+            # First crawl attempt processing
             for i, result in enumerate(results):
                 try:
                     if result is None:
-                        logger.debug(f"URL爬取结果为None: {urls[i]}")
+                        logger.debug(f"URL crawl result is None: {urls[i]}")
                         retry_urls.append(urls[i])
                         continue
 
                     if not hasattr(result, 'success'):
-                        logger.debug(f"URL爬取结果缺少success属性: {urls[i]}")
+                        logger.debug(f"URL crawl result missing success attribute: {urls[i]}")
                         retry_urls.append(urls[i])
                         continue
 
                     if result.success:
                         if not hasattr(result, 'markdown') or not hasattr(result.markdown, 'fit_markdown'):
-                            logger.debug(f"URL爬取结果缺少markdown内容: {urls[i]}")
+                            logger.debug(f"URL crawl result missing markdown content: {urls[i]}")
                             retry_urls.append(urls[i])
                             continue
 
-                        # 将成功的结果的markdown内容添加到列表中
+                        # Add successful result's markdown content to the list
                         result_with_source = result.markdown.fit_markdown + '\n\n'
                         all_results.append(result_with_source)
-                        logger.info(f"成功爬取URL: {urls[i]}")
+                        logger.info(f"Successfully crawled URL: {urls[i]}")
                     else:
-                        logger.debug(f"URL爬取失败: {urls[i]}")
+                        logger.debug(f"URL crawl failed: {urls[i]}")
                         retry_urls.append(urls[i])
                 except Exception as e:
-                    # 记录需要重试的URL
+                    # Record URLs that need retry
                     retry_urls.append(urls[i])
                     error_msg = str(e)
-                    logger.warning(f"URL第一次爬取失败: {urls[i]}, 错误信息: {error_msg}")
+                    logger.warning(f"URL first crawl attempt failed: {urls[i]}, error: {error_msg}")
 
-            # 如果有需要重试的URL，进行第二次爬取
+            # If there are URLs to retry, perform second crawl attempt
             if retry_urls:
-                logger.info(f"重试失败的URLs: {', '.join(retry_urls)}")
+                logger.info(f"Retrying failed URLs: {', '.join(retry_urls)}")
                 retry_results = await self.crawler.arun_many(urls=retry_urls, config=run_config)
 
                 for i, result in enumerate(retry_results):
                     try:
                         if result is None:
-                            logger.debug(f"重试URL爬取结果为None: {retry_urls[i]}")
+                            logger.debug(f"Retry URL crawl result is None: {retry_urls[i]}")
                             failed_urls.append(retry_urls[i])
                             continue
 
                         if not hasattr(result, 'success'):
-                            logger.debug(f"重试URL爬取结果缺少success属性: {retry_urls[i]}")
+                            logger.debug(f"Retry URL crawl result missing success attribute: {retry_urls[i]}")
                             failed_urls.append(retry_urls[i])
                             continue
 
                         if result.success:
                             if not hasattr(result, 'markdown') or not hasattr(result.markdown, 'fit_markdown'):
-                                logger.debug(f"重试URL爬取结果缺少markdown内容: {retry_urls[i]}")
+                                logger.debug(f"Retry URL crawl result missing markdown content: {retry_urls[i]}")
                                 failed_urls.append(retry_urls[i])
                                 continue
 
-                            # 将重试成功的结果添加到列表中
+                            # Add successful retry result to the list
                             result_with_source = result.markdown.fit_markdown + '\n\n'
                             all_results.append(result_with_source)
-                            logger.info(f"重试成功爬取URL: {retry_urls[i]}")
+                            logger.info(f"Successfully crawled URL on retry: {retry_urls[i]}")
                         else:
-                            logger.debug(f"重试URL爬取仍然失败: {retry_urls[i]}")
+                            logger.debug(f"Retry URL crawl still failed: {retry_urls[i]}")
                             failed_urls.append(retry_urls[i])
                     except Exception as e:
-                        # 记录最终失败的URL
+                        # Record finally failed URLs
                         failed_urls.append(retry_urls[i])
                         error_msg = str(e)
-                        logger.error(f"URL第二次爬取失败: {retry_urls[i]}, 错误信息: {error_msg}")
+                        logger.error(f"URL second crawl attempt failed: {retry_urls[i]}, error: {error_msg}")
 
             if not all_results:
-                logger.error("所有URL爬取均失败")
-                raise HTTPException(status_code=500, detail="所有URL爬取均失败")
+                logger.error("All URL crawls failed")
+                raise HTTPException(status_code=500, detail="All URL crawls failed")
 
-            # 将所有成功结果用分隔符连接成一个完整的字符串
+            # Join all successful results into a complete string with separators
             combined_content = '\n\n==========\n\n'.join(all_results)
 
-            # 转换为纯文本
+            # Convert to plain text
             plain_text = self.markdown_to_text_regex(self.markdown_to_text(combined_content))
 
             response = {
@@ -313,8 +316,8 @@ class WebCrawler:
                 "failed_urls": failed_urls
             }
 
-            logger.info(f"爬取完成，成功: {len(all_results)}，失败: {len(failed_urls)}")
+            logger.info(f"Crawl completed, successful: {len(all_results)}, failed: {len(failed_urls)}")
             return response
         except Exception as e:
-            logger.error(f"爬取过程发生异常: {str(e)}")
+            logger.error(f"Exception occurred during crawling: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
