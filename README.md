@@ -124,11 +124,25 @@ Parameters:
 Response:
 ```json
 {
-  "content": "Crawled web content...",
+  "results": [
+    {
+      "content": "Crawled web content...",
+      "reference": "https://example.com/page1"
+    }
+  ],
   "success_count": 8,
-  "failed_urls": ["https://example.com/failed1", "https://example.com/failed2"]
+  "failed_urls": ["https://example.com/failed1", "https://example.com/failed2"],
+  "cache_hits": 3,
+  "newly_crawled": 5
 }
 ```
+
+Response fields:
+- `results`: Array of crawled content with references
+- `success_count`: Total number of successful results (cached + newly crawled)
+- `failed_urls`: List of URLs that failed to crawl
+- `cache_hits`: Number of results retrieved from cache (when caching is enabled)
+- `newly_crawled`: Number of results freshly crawled (when caching is enabled)
 
 ### API Documentation
 
@@ -199,6 +213,7 @@ For detailed caching documentation, see [`CACHE_IMPLEMENTATION.md`](CACHE_IMPLEM
 ├── src/
 │   └── searcrawl/
 │       ├── __init__.py      # Package initialization
+│       ├── cache.py         # Distributed cache manager (Redis)
 │       ├── config.py         # Configuration loading module
 │       ├── crawler.py        # Crawler functionality module
 │       ├── logger.py         # Logging module
@@ -211,9 +226,12 @@ For detailed caching documentation, see [`CACHE_IMPLEMENTATION.md`](CACHE_IMPLEM
 ├── .env.example              # Environment variables example
 ├── .gitignore                # Git ignore patterns
 ├── .pre-commit-config.yaml   # Pre-commit hooks configuration
+├── docker-compose.yml        # Docker Compose configuration (app + Redis)
+├── Dockerfile                # Docker image definition
 ├── pyproject.toml            # Project metadata and dependencies
 ├── requirements.txt          # Production dependencies
 ├── requirements-dev.txt      # Development dependencies
+├── CACHE_IMPLEMENTATION.md   # Caching system documentation
 ├── LICENSE                   # MIT License
 └── README.md                 # Project documentation
 ```
@@ -270,9 +288,21 @@ This project uses several tools to maintain code quality:
 
 To extend functionality, you can modify the following files:
 
-- `src/searcrawl/crawler.py`: Add new crawling strategies or content processing methods
-- `src/searcrawl/main.py`: Add new API endpoints
-- `src/searcrawl/config.py`: Add new configuration parameters
+- [`src/searcrawl/cache.py`](src/searcrawl/cache.py): Extend caching strategies or add new cache backends
+- [`src/searcrawl/crawler.py`](src/searcrawl/crawler.py): Add new crawling strategies or content processing methods
+- [`src/searcrawl/main.py`](src/searcrawl/main.py): Add new API endpoints
+- [`src/searcrawl/config.py`](src/searcrawl/config.py): Add new configuration parameters
+
+### Working with Cache
+
+The caching system uses Redis for distributed storage, allowing multiple instances to share cached results. For detailed information about:
+
+- Cache architecture and design
+- Multi-instance cache sharing
+- Performance optimization strategies
+- Troubleshooting and monitoring
+
+See the comprehensive guide: [`CACHE_IMPLEMENTATION.md`](CACHE_IMPLEMENTATION.md)
 
 ### Running Tests
 

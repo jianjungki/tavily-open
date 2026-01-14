@@ -10,6 +10,7 @@ crawling operations.
 import json
 import hashlib
 from typing import Optional, Dict, Any
+from redis import Redis
 from datetime import datetime, timedelta
 import redis
 from loguru import logger
@@ -25,9 +26,12 @@ class CacheManager:
             redis_url: Redis connection URL (e.g., 'redis://localhost:6379/0')
             ttl_hours: Time-to-live for cached items in hours, default is 24
         """
+        # initialize attribute for type checkers
+        self.redis_client: Optional[Redis] = None
         try:
             self.redis_client = redis.from_url(redis_url, decode_responses=True)
             # Test connection
+            assert self.redis_client is not None
             self.redis_client.ping()
             self.ttl_seconds = ttl_hours * 3600
             logger.info(f"Cache manager initialized with Redis: {redis_url}, TTL: {ttl_hours} hours")

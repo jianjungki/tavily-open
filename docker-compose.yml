@@ -21,6 +21,8 @@ services:
     container_name: searcrawl_app
     volumes:
       - ./src:/app/src
+    ports:
+      - "8000:3000"
     env_file:
       - .env
     depends_on:
