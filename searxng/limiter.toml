@@ -1,0 +1,39 @@
+# SearXNG limiter.toml configuration file
+# Rate limiting configuration
+
+[botdetection]
+# Enable bot detection
+enable = true
+
+# Suspicious user agents
+suspicious_user_agents = [
+    "curl",
+    "wget",
+    "python",
+    "scrapy",
+    "bot",
+    "spider",
+    "crawler"
+]
+
+# Whitelisted IPs
+whitelist = []
+
+# Blacklisted IPs
+blacklist = []
+
+[rate_limit]
+# Enable rate limiting
+enable = true
+
+# Requests per second per IP
+requests_per_second = 10
+
+# Requests per minute per IP
+requests_per_minute = 300
+
+# Ban time in seconds
+ban_time = 60
+
+# Max ban time in seconds
+max_ban_time = 3600

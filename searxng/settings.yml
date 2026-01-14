@@ -1,0 +1,133 @@
+# SearXNG settings.yml configuration file
+# See https://docs.searxng.org/admin/settings/index.html for more details
+
+server:
+  # The IP address to listen on
+  bind_address: "0.0.0.0"
+  # The port to listen on
+  port: 8080
+  # The base URL for SearXNG
+  base_url: http://localhost:8080/
+  # Enable debug mode
+  debug: false
+  # Number of worker threads
+  workers: 4
+  # Request timeout in seconds
+  request_timeout: 5.0
+  # Enable limiter
+  enable_limiter: true
+  # Image proxy
+  image_proxy: true
+  # Proxy URL for images
+  image_proxy_url: /image_proxy?url={encoded_url}&h={header_encoding}
+  # Proxy filter
+  proxy_filter: []
+
+ui:
+  # Default theme
+  theme_args:
+    simple_style: light
+
+search:
+  # Autocomplete backend
+  autocomplete: "duckduckgo"
+  # Default autocomplete
+  autocomplete_min: 4
+  # Search language
+  default_lang: "all"
+  # Ban time in seconds
+  ban_time_on_fail: 5
+  # Max ban time
+  max_ban_time_on_fail: 120
+  # Suspended cache expiration time
+  suspended_cache_expiration_time: 15
+
+redis:
+  # Redis URL for caching
+  url: "redis://redis:6379/0"
+
+# Outgoing requests configuration
+outgoing:
+  # Request timeout
+  request_timeout: 3.0
+  # Max retries
+  max_retries: 0
+  # Pool connections
+  pool_connections: 100
+  # Pool maxsize
+  pool_maxsize: 10
+  # Enable IPv6
+  enable_ipv6: true
+
+# Engines configuration
+engines:
+  - name: google
+    engine: google
+    shortcut: go
+    disabled: false
+
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+
+  - name: wikidata
+    engine: wikidata
+    shortcut: wd
+    disabled: false
+
+  - name: duckduckgo images
+    engine: duckduckgo
+    shortcut: ddi
+    image_search: true
+    disabled: false
+
+  - name: google images
+    engine: google
+    shortcut: goi
+    image_search: true
+    disabled: false
+
+  - name: bing images
+    engine: bing
+    shortcut: bii
+    image_search: true
+    disabled: false
+
+  - name: google news
+    engine: google
+    shortcut: gon
+    news_search: true
+    disabled: false
+
+  - name: bing news
+    engine: bing
+    shortcut: bin
+    news_search: true
+    disabled: false
+
+# Plugins
+plugins:
+  - plugin: Basic Authentication
+    disabled: true
+
+# Checker
+checker:
+  # Check engines
+  enable: true
+  # Scheduling
+  scheduling: true
+  # Request timeout
+  request_timeout: 3.0
+  # Retries
+  retries: 2

@@ -16,6 +16,37 @@ services:
       retries: 5
     restart: unless-stopped
 
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searcrawl_searxng
+    profiles:
+      - searxng
+      - full
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-ultrasecretkey}
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   app:
     build: .
     container_name: searcrawl_app
@@ -30,6 +61,7 @@ services:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
 
 volumes:
   redis_data:
