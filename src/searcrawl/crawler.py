@@ -7,7 +7,7 @@ It encapsulates the AsyncWebCrawler from crawl4ai library and provides
 high-level methods for crawling web pages and processing their content.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
@@ -19,8 +19,7 @@ from crawl4ai.content_filter_strategy import PruningContentFilter
 import markdown
 from bs4 import BeautifulSoup
 import re
-import http.client
-from codecs import encode
+import httpx
 import json
 from fastapi import HTTPException
 from loguru import logger
@@ -34,16 +33,25 @@ from searcrawl.config import (
     ENABLED_ENGINES,
     SEARCH_LANGUAGE,
     CONTENT_FILTER_THRESHOLD,
-    WORD_COUNT_THRESHOLD
+    WORD_COUNT_THRESHOLD,
+    CACHE_ENABLED,
+    REDIS_URL,
+    CACHE_TTL_HOURS
 )
+from searcrawl.cache import CacheManager
 
 
 class WebCrawler:
     """Web crawler class that encapsulates web crawling and content processing functionality"""
 
-    def __init__(self):
-        """Initialize crawler instance"""
-        self.crawler = None
+    def __init__(self, cache_manager: Optional[CacheManager] = None):
+        """Initialize crawler instance
+        
+        Args:
+            cache_manager: Optional cache manager instance for caching crawl results
+        """
+        self.crawler: Optional[AsyncWebCrawler] = None
+        self.cache_manager = cache_manager
         logger.info("Initializing WebCrawler instance")
 
     async def initialize(self) -> None:
@@ -52,7 +60,7 @@ class WebCrawler:
         Must be called before using the crawler
         """
         # Configure browser
-        browser_config = BrowserConfig(headless=True, verbose=True)
+        browser_config = BrowserConfig(headless=True, verbose=False)
         # Initialize crawler
         self.crawler = await AsyncWebCrawler(config=browser_config).__aenter__()
         logger.info("AsyncWebCrawler initialization completed")
@@ -119,7 +127,7 @@ class WebCrawler:
         return cleaned_text
 
     @staticmethod
-    def make_searxng_request(
+    async def make_searxng_request(
         query: str,
         limit: int = 10,
         disabled_engines: str = DISABLED_ENGINES,
@@ -140,10 +148,6 @@ class WebCrawler:
             Exception: Raised when request fails
         """
         try:
-            conn = http.client.HTTPConnection(SEARXNG_HOST, SEARXNG_PORT)
-            dataList = []
-            boundary = 'wL36Yn8afVp8Ag7AmP8qZ0SA4n1v9T'
-
             form_data = {
                 'q': query,
                 'format': 'json',
@@ -154,32 +158,24 @@ class WebCrawler:
                 'category_general': '1'
             }
 
-            # Add form fields
-            for key, value in form_data.items():
-                dataList.append(encode('--' + boundary))
-                dataList.append(encode(f'Content-Disposition: form-data; name={key};'))
-                dataList.append(encode('Content-Type: {}'.format('text/plain')))
-                dataList.append(encode(''))
-                dataList.append(encode(str(value)))
-
-            dataList.append(encode('--'+boundary+'--'))
-            dataList.append(encode(''))
-            body = b'\n'.join(dataList)
-
             headers = {
                 'Cookie': f'disabled_engines={disabled_engines};enabled_engines={enabled_engines};method=POST',
                 'User-Agent': 'Sear-Crawl4AI/1.0.0',
                 'Accept': '*/*',
                 'Host': f'{SEARXNG_HOST}:{SEARXNG_PORT}',
                 'Connection': 'keep-alive',
-                'Content-Type': f'multipart/form-data; boundary={boundary}'
             }
+            
+            url = f"http://{SEARXNG_HOST}:{SEARXNG_PORT}{SEARXNG_BASE_PATH}"
 
-            logger.info(f"Sending search request to SearXNG: {query}")
-            conn.request("POST", SEARXNG_BASE_PATH, body, headers)
-            res = conn.getresponse()
-            data = res.read()
-            return json.loads(data.decode("utf-8"))
+            async with httpx.AsyncClient() as client:
+                logger.info(f"Sending search request to SearXNG: {query}")
+                response = await client.post(url, data=form_data, headers=headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"SearXNG request failed with status {e.response.status_code}: {e.response.text}")
+            raise Exception(f"Search request failed: {e.response.text}")
         except Exception as e:
             logger.error(f"SearXNG request failed: {str(e)}")
             raise Exception(f"Search request failed: {str(e)}")
@@ -203,6 +199,40 @@ class WebCrawler:
                 logger.warning("Crawler not initialized, auto-initializing")
                 await self.initialize()
 
+            # Check cache first if cache manager is available
+            cached_results = []
+            urls_to_crawl = []
+            
+            if self.cache_manager and self.cache_manager.is_available():
+                logger.info(f"Checking cache for {len(urls)} URLs")
+                cache_hits = self.cache_manager.get_batch(urls, instruction)
+                
+                for url in urls:
+                    cached_data = cache_hits.get(url)
+                    if cached_data:
+                        cached_results.append({
+                            "content": cached_data.get("content"),
+                            "reference": cached_data.get("reference")
+                        })
+                        logger.info(f"Cache hit for URL: {url}")
+                    else:
+                        urls_to_crawl.append(url)
+                
+                logger.info(f"Cache hits: {len(cached_results)}, URLs to crawl: {len(urls_to_crawl)}")
+            else:
+                urls_to_crawl = urls
+                logger.info("Cache not available, crawling all URLs")
+
+            # If all URLs are cached, return cached results
+            if not urls_to_crawl:
+                logger.info("All URLs found in cache, returning cached results")
+                return {
+                    "results": cached_results,
+                    "success_count": len(cached_results),
+                    "failed_urls": [],
+                    "cache_hits": len(cached_results)
+                }
+
             # Configure Markdown generator
             md_generator = DefaultMarkdownGenerator(
                 content_filter=PruningContentFilter(threshold=CONTENT_FILTER_THRESHOLD),
@@ -224,8 +254,22 @@ class WebCrawler:
                 cache_mode=CacheMode.BYPASS
             )
 
-            logger.info(f"Starting to crawl URLs: {', '.join(urls)}")
-            results = await self.crawler.arun_many(urls=urls, config=run_config)
+            logger.info(f"Starting to crawl URLs: {', '.join(urls_to_crawl)}")
+            
+            # Ensure crawler is initialized
+            if not self.crawler:
+                raise RuntimeError("Crawler not initialized")
+            
+            # Crawl URLs and get results
+            crawl_result = await self.crawler.arun_many(urls=urls_to_crawl, config=run_config)
+            
+            # Convert to list if it's an async generator
+            results: list = []
+            if hasattr(crawl_result, '__aiter__'):
+                async for result in crawl_result:  # type: ignore
+                    results.append(result)
+            else:
+                results = list(crawl_result) if crawl_result else []  # type: ignore
 
             # Create a list to store crawl results from all successful URLs
             all_results = []
@@ -236,40 +280,50 @@ class WebCrawler:
             for i, result in enumerate(results):
                 try:
                     if result is None:
-                        logger.debug(f"URL crawl result is None: {urls[i]}")
-                        retry_urls.append(urls[i])
+                        logger.debug(f"URL crawl result is None: {urls_to_crawl[i]}")
+                        retry_urls.append(urls_to_crawl[i])
                         continue
 
                     if not hasattr(result, 'success'):
-                        logger.debug(f"URL crawl result missing success attribute: {urls[i]}")
-                        retry_urls.append(urls[i])
+                        logger.debug(f"URL crawl result missing success attribute: {urls_to_crawl[i]}")
+                        retry_urls.append(urls_to_crawl[i])
                         continue
 
                     if result.success:
                         if not hasattr(result, 'markdown') or not hasattr(result.markdown, 'fit_markdown'):
-                            logger.debug(f"URL crawl result missing markdown content: {urls[i]}")
-                            retry_urls.append(urls[i])
+                            logger.debug(f"URL crawl result missing markdown content: {urls_to_crawl[i]}")
+                            retry_urls.append(urls_to_crawl[i])
                             continue
 
                         # Add successful result's markdown content to the list
                         all_results.append({
                             "content": result.markdown.fit_markdown,
-                            "reference": urls[i]
+                            "reference": urls_to_crawl[i]
                         })
-                        logger.info(f"Successfully crawled URL: {urls[i]}")
+                        logger.info(f"Successfully crawled URL: {urls_to_crawl[i]}")
                     else:
-                        logger.debug(f"URL crawl failed: {urls[i]}")
-                        retry_urls.append(urls[i])
+                        logger.debug(f"URL crawl failed: {urls_to_crawl[i]}")
+                        retry_urls.append(urls_to_crawl[i])
                 except Exception as e:
                     # Record URLs that need retry
-                    retry_urls.append(urls[i])
+                    retry_urls.append(urls_to_crawl[i])
                     error_msg = str(e)
-                    logger.warning(f"URL first crawl attempt failed: {urls[i]}, error: {error_msg}")
+                    logger.warning(f"URL first crawl attempt failed: {urls_to_crawl[i]}, error: {error_msg}")
 
             # If there are URLs to retry, perform second crawl attempt
             if retry_urls:
                 logger.info(f"Retrying failed URLs: {', '.join(retry_urls)}")
-                retry_results = await self.crawler.arun_many(urls=retry_urls, config=run_config)
+                
+                # Crawl retry URLs and get results
+                retry_crawl_result = await self.crawler.arun_many(urls=retry_urls, config=run_config)
+                
+                # Convert to list if it's an async generator
+                retry_results: list = []
+                if hasattr(retry_crawl_result, '__aiter__'):
+                    async for result in retry_crawl_result:  # type: ignore
+                        retry_results.append(result)
+                else:
+                    retry_results = list(retry_crawl_result) if retry_crawl_result else []  # type: ignore
 
                 for i, result in enumerate(retry_results):
                     try:
@@ -317,13 +371,30 @@ class WebCrawler:
                     "reference": result["reference"]
                 })
 
+            # Cache newly crawled results
+            if self.cache_manager and self.cache_manager.is_available() and processed_results:
+                cache_items = []
+                for result in processed_results:
+                    cache_items.append({
+                        "url": result["reference"],
+                        "content": result["content"],
+                        "reference": result["reference"]
+                    })
+                cached_count = self.cache_manager.set_batch(cache_items, instruction)
+                logger.info(f"Cached {cached_count} newly crawled results")
+
+            # Combine cached and newly crawled results
+            all_processed_results = cached_results + processed_results
+
             response = {
-                "results": processed_results,
-                "success_count": len(processed_results),
-                "failed_urls": failed_urls
+                "results": all_processed_results,
+                "success_count": len(all_processed_results),
+                "failed_urls": failed_urls,
+                "cache_hits": len(cached_results),
+                "newly_crawled": len(processed_results)
             }
 
-            logger.info(f"Crawl completed, successful: {len(processed_results)}, failed: {len(failed_urls)}")
+            logger.info(f"Crawl completed, total: {len(all_processed_results)}, cache hits: {len(cached_results)}, newly crawled: {len(processed_results)}, failed: {len(failed_urls)}")
             return response
         except Exception as e:
             logger.error(f"Exception occurred during crawling: {str(e)}")

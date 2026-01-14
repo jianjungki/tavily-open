@@ -29,6 +29,12 @@ API_PORT = int(os.getenv("API_PORT", "3000"))
 DEFAULT_SEARCH_LIMIT = int(os.getenv("DEFAULT_SEARCH_LIMIT", "10"))
 CONTENT_FILTER_THRESHOLD = float(os.getenv("CONTENT_FILTER_THRESHOLD", "0.6"))
 WORD_COUNT_THRESHOLD = int(os.getenv("WORD_COUNT_THRESHOLD", "10"))
+CRAWLER_POOL_SIZE = int(os.getenv("CRAWLER_POOL_SIZE", "4"))
+
+# Cache Configuration
+CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+CACHE_TTL_HOURS = int(os.getenv("CACHE_TTL_HOURS", "24"))
 
 # Search Engine Configuration
 DISABLED_ENGINES = os.getenv(

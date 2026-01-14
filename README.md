@@ -10,6 +10,7 @@ SearCrawl is an open-source search and crawling tool based on SearXNG and Crawl4
 Key Features:
 - Search results retrieval through SearXNG search engine
 - Web content crawling and processing using Crawl4AI
+- **Distributed caching with Redis** - Reduce redundant crawling across multiple instances
 - Clean RESTful API interface
 - Customizable search engine and crawling parameters
 - Modern Python packaging with pyproject.toml
@@ -23,8 +24,30 @@ Key Features:
 - Python 3.8+
 - SearXNG instance (local or remote)
 - Playwright browser (installation script handles automatically)
+- Redis (optional, for caching - included in Docker setup)
 
-### Installation Steps
+### Quick Start with Docker
+
+The easiest way to run SearCrawl with all dependencies:
+
+```bash
+# Clone the repository
+git clone https://github.com/Owoui/SearXNG-Crawl4AI.git
+cd SearXNG-Crawl4AI
+
+# Copy and configure environment variables
+cp .env.example .env
+
+# Start all services (app + Redis)
+docker-compose up -d
+
+# Check logs
+docker-compose logs -f
+```
+
+The service will be available at `http://localhost:3000`
+
+### Manual Installation Steps
 
 1. Clone the repository
 ```bash
@@ -145,11 +168,27 @@ API_PORT=3000
 DEFAULT_SEARCH_LIMIT=10
 CONTENT_FILTER_THRESHOLD=0.6
 WORD_COUNT_THRESHOLD=10
+CRAWLER_POOL_SIZE=4
+
+# Cache Configuration
+CACHE_ENABLED=true
+REDIS_URL=redis://localhost:6379/0
+CACHE_TTL_HOURS=24
 
 # Search Engine Configuration
 DISABLED_ENGINES=wikipedia__general,currency__general,...
 ENABLED_ENGINES=baidu__general
 ```
+
+### Cache Configuration
+
+SearCrawl now includes distributed caching with Redis to reduce redundant crawling:
+
+- **CACHE_ENABLED**: Enable/disable caching (true/false)
+- **REDIS_URL**: Redis connection URL (default: redis://localhost:6379/0)
+- **CACHE_TTL_HOURS**: Cache expiration time in hours (default: 24)
+
+For detailed caching documentation, see [`CACHE_IMPLEMENTATION.md`](CACHE_IMPLEMENTATION.md).
 
 ## Development
 

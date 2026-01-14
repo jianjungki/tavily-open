@@ -6,3 +6,5 @@ pydantic==2.11.3
 uvicorn==0.34.0
 python-dotenv==1.0.0
 loguru==0.7.2
+httpx
+redis==5.0.1
