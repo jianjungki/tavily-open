@@ -86,7 +86,7 @@ class CacheManager:
             cached_data = self.redis_client.get(cache_key)
             
             if cached_data:
-                result = json.loads(cached_data)
+                result = json.loads(str(cached_data))
                 logger.debug(f"Search cache hit for query: {query}")
                 # The actual result is nested inside the 'result' key
                 return result.get("result")
