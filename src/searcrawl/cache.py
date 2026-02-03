@@ -55,6 +55,81 @@ class CacheManager:
         cache_hash = hashlib.md5(cache_input).hexdigest()
         return f"crawl_cache:{cache_hash}"
 
+    def _generate_search_cache_key(self, query: str) -> str:
+        """Generate a cache key from a search query
+        
+        Args:
+            query: The search query string
+            
+        Returns:
+            str: Generated cache key
+        """
+        cache_input = f"search:{query}".encode('utf-8')
+        cache_hash = hashlib.md5(cache_input).hexdigest()
+        return f"search_cache:{cache_hash}"
+
+    def get_search_cache(self, query: str) -> Optional[Dict[str, Any]]:
+        """Get cached search result for a query
+        
+        Args:
+            query: The search query to retrieve from cache
+            
+        Returns:
+            Dict or None: Cached result if found, None otherwise
+        """
+        if not self.redis_client:
+            logger.debug("Redis client not available, skipping cache retrieval")
+            return None
+            
+        try:
+            cache_key = self._generate_search_cache_key(query)
+            cached_data = self.redis_client.get(cache_key)
+            
+            if cached_data:
+                result = json.loads(cached_data)
+                logger.debug(f"Search cache hit for query: {query}")
+                # The actual result is nested inside the 'result' key
+                return result.get("result")
+            else:
+                logger.debug(f"Search cache miss for query: {query}")
+                return None
+        except Exception as e:
+            logger.warning(f"Error retrieving from search cache: {str(e)}")
+            return None
+
+    def set_search_cache(self, query: str, result: Dict[str, Any]) -> bool:
+        """Cache a search result for a query with a 1-minute TTL
+        
+        Args:
+            query: The search query being cached
+            result: The search result to cache
+            
+        Returns:
+            bool: True if caching succeeded, False otherwise
+        """
+        if not self.redis_client:
+            logger.debug("Redis client not available, skipping cache storage")
+            return False
+            
+        try:
+            cache_key = self._generate_search_cache_key(query)
+            cache_data = {
+                "result": result,
+                "cached_at": datetime.now().isoformat(),
+                "query": query
+            }
+            
+            self.redis_client.setex(
+                cache_key,
+                300, # 1 minute TTL
+                json.dumps(cache_data, ensure_ascii=False)
+            )
+            logger.debug(f"Cached search result for query: {query}")
+            return True
+        except Exception as e:
+            logger.warning(f"Error storing in search cache: {str(e)}")
+            return False
+
     def get(self, url: str, instruction: str = "") -> Optional[Dict[str, Any]]:
         """Get cached crawl result for a URL
 

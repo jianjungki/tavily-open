@@ -16,24 +16,22 @@ async def fetch_with_reader(url: str) -> Optional[Dict[str, Any]]:
         Optional[Dict[str, Any]]: A dictionary containing the fetched content and metadata,
                                      or None if the fetch failed.
     """
-    reader_api_url = f"{READER_URL}/read"
+    reader_api_url = f"{READER_URL}/{url}"
     headers = {
         "Accept": "application/json",
+        "X-Respond-With": "markdown",
     }
     if READER_API_KEY:
         headers["Authorization"] = f"Bearer {READER_API_KEY}"
-    
-    params = {"url": url}
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(reader_api_url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            async with session.get(reader_api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 if response.status == 200:
-                    data = await response.json()
-                    # The reader service returns a list of results, we take the first one
-                    if data and isinstance(data, list) and data[0]:
+                    content = await response.text()
+                    if content:
                         logger.info(f"Successfully fetched content for {url} with Jina Reader.")
-                        return data[0]
+                        return {"content": content, "reference": url}
                     else:
                         logger.warning(f"Jina Reader returned no content for {url}.")
                         return None

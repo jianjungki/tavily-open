@@ -292,9 +292,17 @@ async def search(request: SearchRequest):
     Raises:
         HTTPException: Raised when an error occurs during search or crawling
     """
+    global cache_manager
     try:
         # Add status feedback
         logger.info(f"Starting search: {request.query}")
+
+        # Check cache for search results
+        if cache_manager:
+            cached_result = cache_manager.get_search_cache(request.query)
+            if cached_result:
+                logger.info(f"Search cache hit for query: {request.query}")
+                return cached_result
 
         # Call SearXNG search engine (now async)
         response = await WebCrawler.make_searxng_request(
@@ -319,7 +327,13 @@ async def search(request: SearchRequest):
         logger.info(f"Found {len(urls)} URLs, starting to crawl")
 
         # Call crawl function to process URLs
-        return await crawl(CrawlRequest(urls=urls, instruction=request.query))
+        crawl_result = await crawl(CrawlRequest(urls=urls, instruction=request.query))
+
+        # Cache the search result
+        if cache_manager:
+            cache_manager.set_search_cache(request.query, crawl_result)
+
+        return crawl_result
     except HTTPException:
         # Directly re-raise HTTP exceptions
         raise
